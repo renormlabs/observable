@@ -133,8 +133,8 @@ func TestAssertfOverride(t *testing.T) {
 }
 
 func TestNotUnsupportedValue(t *testing.T) {
-	got := observable.Not(42) // F = int
-	if got != 0 {             // zero value for int
+	got := observable.Not(42)
+	if got != 0 {
 		t.Errorf("expected 0, got %v", got)
 	}
 }

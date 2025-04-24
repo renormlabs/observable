@@ -2,7 +2,7 @@
 
 // Package observable provides lightweight, zero-dependency helpers for writing
 // expressive assertions in Go tests. It embraces Go's standard testing package
-// by integrating with testing.TB and keeps the API minimal while still
+// by integrating with [testing.TB] and keeps the API minimal while still
 // supporting generic, user-defined predicates.
 package observable
 
@@ -16,8 +16,8 @@ import (
 
 // Predicate encapsulates a lazily‑evaluated boolean condition together with a
 // descriptive failure message. Generally, users will construct predicates with
-// the helper functions in this package (e.g. Nil, Equal, Panics).The zero value
-// is NOT valid.
+// the helper functions in this package (e.g. [Nil], [Equal], [Panics]).The zero
+// value is NOT valid.
 type Predicate struct {
 	ok  func() bool
 	msg func() string
@@ -29,28 +29,28 @@ func (p Predicate) Ok() bool { return p.ok() }
 // Message returns the descriptive text explaining why the predicate failed.
 func (p Predicate) Message() string { return p.msg() }
 
-// Assertion is the type constraint accepted by Assert, Assertf, and Not. It may
-// be one of the following concrete types:
-//   - bool           – a pre‑computed truth value
-//   - func() bool    – a zero‑arg function evaluated lazily
-//   - Predicate      – a value returned by this package's helpers
+// [Assertion] is the constraint accepted by [Assert], [Assertf], and [Not]. It
+// may be one of the following concrete types:
+//   - bool          – a pre‑computed truth value
+//   - func() bool – a zero‑arg function evaluated lazily
+//   - [Predicate] – a value returned by this package's helpers
 type Assertion interface {
 	bool | func() bool | Predicate
 }
 
-// Assert evaluates the assertion and records an error on the testing.TB when
+// Assert evaluates the assertion and records an error on the [testing.TB] when
 // the assertion is false.
 //
-// The returned bool is the evaluation result, which allows further composition
-// or chaining inside a test when desired.
+// The returned bool is the evaluation result, which allows further
+// composition or chaining inside a test when desired.
 func Assert[T Assertion](tb testing.TB, a T) bool {
 	tb.Helper()
 	ok, msg := assert(a)
 	return observe(tb, ok, msg) // auto-message (if any) is used
 }
 
-// Assertf behaves like Assert but lets the caller supply an explicit failure
-// message via format and args, similar to fmt.Sprintf.
+// Assertf behaves like [Assert] but lets the caller supply an explicit
+// failure message via format and args, similar to [fmt.Sprintf].
 func Assertf[T Assertion](tb testing.TB, a T, format string, args ...any) bool {
 	tb.Helper()
 	ok, _ := assert(a) // discard auto-message
@@ -58,11 +58,6 @@ func Assertf[T Assertion](tb testing.TB, a T, format string, args ...any) bool {
 }
 
 // Not returns the logical negation of its argument.
-//
-//   - If x is a Predicate (directly, bool, or func() bool), it inverts it.
-//   - If x is a func( … ) Predicate, it builds an identically-typed wrapper
-//     that calls the original and then negates the result.
-//   - Any other x yields the zero value of F (compile-time safe, runtime no-op).
 func Not[F any](x F) F {
 	//nolint:forcetypeassert
 	switch v := any(x).(type) {
@@ -82,7 +77,7 @@ func Not[F any](x F) F {
 	rv := reflect.ValueOf(x)
 	if rv.Kind() != reflect.Func {
 		var zero F
-		return zero // unsupported, but still type-safe
+		return zero
 	}
 
 	rt := rv.Type()
@@ -104,7 +99,7 @@ func Not[F any](x F) F {
 	return wrapper.Interface().(F)
 }
 
-// Nil returns a Predicate that succeeds when v is nil.
+// Nil returns a [Predicate] that succeeds when v is nil.
 func Nil(v any) Predicate {
 	isNil := func(x any) bool {
 		if x == nil {
@@ -119,7 +114,7 @@ func Nil(v any) Predicate {
 	}
 }
 
-// ErrorIs returns a Predicate that succeeds when errors.Is(err, target) is true.
+// ErrorIs returns a [Predicate] that succeeds when [errors.Is](err, target) is true.
 func ErrorIs(err, target error) Predicate {
 	return Predicate{
 		ok: func() bool { return errors.Is(err, target) },
@@ -129,7 +124,7 @@ func ErrorIs(err, target error) Predicate {
 	}
 }
 
-// Errors returns a Predicate that succeeds when f returns a non‑nil error.
+// [Errors] returns a [Predicate] that succeeds when f returns a non‑nil error.
 func Errors(f func() error) Predicate {
 	return Predicate{
 		ok:  func() bool { return f() != nil },
@@ -137,8 +132,8 @@ func Errors(f func() error) Predicate {
 	}
 }
 
-// ErrorsWith returns a Predicate that succeeds when f returns an error that
-// matches target according to errors.Is.
+// ErrorsWith returns a [Predicate] that succeeds when f returns an error that
+// matches target according to [errors.Is].
 func ErrorsWith(f func() error, target error) Predicate {
 	return Predicate{
 		ok:  func() bool { return errors.Is(f(), target) },
@@ -146,7 +141,7 @@ func ErrorsWith(f func() error, target error) Predicate {
 	}
 }
 
-// Panics returns a Predicate that succeeds when f panics.
+// Panics returns a [Predicate] that succeeds when f panics.
 func Panics(f func()) Predicate {
 	return Predicate{
 		ok: func() (panicked bool) {
@@ -162,7 +157,7 @@ func Panics(f func()) Predicate {
 	}
 }
 
-// Zero returns a Predicate that succeeds when v is the zero value of its type.
+// Zero returns a [Predicate] that succeeds when v is the zero value of its type.
 func Zero[T comparable](v T) Predicate {
 	return Predicate{
 		ok:  func() bool { return v == *new(T) },
@@ -170,7 +165,7 @@ func Zero[T comparable](v T) Predicate {
 	}
 }
 
-// Equal returns a Predicate that succeeds when got == want.
+// Equal returns a [Predicate] that succeeds when got == want.
 func Equal[T comparable](got, want T) Predicate {
 	return Predicate{
 		ok:  func() bool { return got == want },
@@ -197,9 +192,9 @@ func Returns[T comparable](f func() T, want T) Predicate {
 	}
 }
 
-// observe is the common implementation used by Assert and Assertf. It reports
-// a test error on tb when ok is false and returns ok so the caller can use the
-// result in further logic.
+// observe is the common implementation used by [Assert] and [Assertf]. It
+// reports a test error on tb when ok is false and returns ok so the caller can
+// use the result in further logic.
 //
 //go:inline
 func observe(tb testing.TB, ok bool, message string) bool {
@@ -211,7 +206,7 @@ func observe(tb testing.TB, ok bool, message string) bool {
 	return false
 }
 
-// assert normalises any Assertion into its boolean value and accompanying
+// assert normalises any [Assertion] into its boolean value and accompanying
 // auto‑generated message (if available).
 func assert[T Assertion](a T) (ok bool, autoMsg string) {
 	var zero T
