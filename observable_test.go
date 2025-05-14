@@ -86,17 +86,45 @@ func TestAssertfOverride(t *testing.T) {
 }
 
 func TestNotUnsupportedValue(t *testing.T) {
-	got := observable.Not(42)
-	if got != 0 {
-		t.Errorf("expected 0, got %v", got)
-	}
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Error("Expected panic, did not panic")
+		}
+	}()
+
+	observable.Not(42)
 }
 
 func TestNotUnsupportedFunc(t *testing.T) {
-	foo := func() int { return 7 }
-	nilFunc := observable.Not(foo)
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Error("Expected panic, did not panic")
+		}
+	}()
 
-	if nilFunc != nil {
-		t.Fatal("expected nil func, got non-nil")
-	}
+	foo := func() int { return 7 }
+	observable.Not(foo)
+}
+
+func TestNotUnsupportedFunc2(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Error("Expected panic, did not panic")
+		}
+	}()
+
+	foo := func() (observable.Predicate, error) { return observable.Equal("a", "b"), nil }
+	observable.Not(foo)
+}
+
+func TestNotChecks(t *testing.T) {
+	testspy.ExpectPass(t, observable.Not(observable.Equal[string])("a", "b"))
+	testspy.ExpectPass(t, observable.Not(false))
+	testspy.ExpectPass(t, observable.Not(func() bool { return false }))
+
+	testspy.ExpectPass(t, observable.Not(func(_ string) bool { return false })("hello"))
+	testspy.ExpectPass(t, observable.Not(func(_ string) func() bool { return func() bool { return false } })("hello"))
 }

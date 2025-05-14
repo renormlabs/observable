@@ -56,6 +56,14 @@ func Assertf[T Assertion](tb testing.TB, a T, format string, args ...any) bool {
 }
 
 // Not returns the logical negation of its argument.
+//
+// The type bounds of the argument to Not are loose and enforced at runtime. You can:
+//   - Negate a bool, resulting in a new bool
+//   - Negate a func() bool, resulting in a new func() bool
+//   - Negate a Predicate, resulting in a new predicate
+//   - Negate a func(...) -> Assertion, resulting in new func(...) -> Assertion. This branch uses reflection and is slower.
+//
+// If you call Not with another type, it will panic!
 func Not[F any](x F) F {
 	//nolint:forcetypeassert
 	switch v := any(x).(type) {
@@ -64,38 +72,49 @@ func Not[F any](x F) F {
 			ok:  func() bool { return !v.Ok() },
 			msg: func() string { return "not: " + v.Message() },
 		}).(F)
-
 	case bool:
 		return any(!v).(F)
-
 	case func() bool:
 		return any(func() bool { return !v() }).(F)
 	}
 
 	rv := reflect.ValueOf(x)
-	if rv.Kind() != reflect.Func {
-		var zero F
-		return zero
+	if !rv.IsValid() || rv.Kind() != reflect.Func {
+		panic(fmt.Sprintf("argument to Not must be an assertion or function that returns an assertion, got %v", rv.Kind()))
 	}
 
 	rt := rv.Type()
-	if rt.NumOut() != 1 || rt.Out(0) != reflect.TypeOf(Predicate{}) {
-		var zero F
-		return zero
+	if rt.NumOut() != 1 {
+		panic(fmt.Sprintf("argument to Not must be an assertion or function that returns an assertion, got a function which returns %d items", rt.NumOut()))
 	}
 
-	wrapper := reflect.MakeFunc(rt, func(args []reflect.Value) []reflect.Value {
+	out := rt.Out(0)
+	switch out {
+	case reflect.TypeOf(false):
 		//nolint:forcetypeassert
-		orig := rv.Call(args)[0].Interface().(Predicate)
-		neg := Predicate{
-			ok:  func() bool { return !orig.Ok() },
-			msg: func() string { return "not: " + orig.Message() },
-		}
-
-		return []reflect.Value{reflect.ValueOf(neg)}
-	})
-	//nolint:forcetypeassert
-	return wrapper.Interface().(F)
+		return reflect.MakeFunc(rt, func(args []reflect.Value) []reflect.Value {
+			b := rv.Call(args)[0].Bool()
+			return []reflect.Value{reflect.ValueOf(!b)}
+		}).Interface().(F)
+	case reflect.TypeOf((func() bool)(nil)):
+		//nolint:forcetypeassert
+		return reflect.MakeFunc(rt, func(args []reflect.Value) []reflect.Value {
+			f := rv.Call(args)[0].Interface().(func() bool)
+			return []reflect.Value{reflect.ValueOf(func() bool { return !f() })}
+		}).Interface().(F)
+	case reflect.TypeOf(Predicate{}):
+		//nolint:forcetypeassert
+		return reflect.MakeFunc(rt, func(args []reflect.Value) []reflect.Value {
+			p := rv.Call(args)[0].Interface().(Predicate)
+			neg := Predicate{
+				ok:  func() bool { return !p.Ok() },
+				msg: func() string { return "not: " + p.Message() },
+			}
+			return []reflect.Value{reflect.ValueOf(neg)}
+		}).Interface().(F)
+	default:
+		panic(fmt.Sprintf("argument to Not must be an assertion or function that returns an assertion, got a function which returns %v", out))
+	}
 }
 
 // Nil returns a [Predicate] that succeeds when v is nil.
