@@ -38,26 +38,21 @@ func (s *SpyTB) Fatal(...any) { panic("Fatal not implemented on SpyTB") }
 func (s *SpyTB) Fatalf(string, ...any) { panic("Fatalf not implemented on SpyTB") }
 
 // ExpectPass expects an assertion to pass. Useful for testing a testing library.
-func ExpectPass[T observable.Assertion](tb testing.TB, pred T) {
+func ExpectPass(tb testing.TB, p observable.Predicate) {
 	tb.Helper()
 	spy := New(tb)
 
-	if !observable.Assert(spy, pred) || spy.SpiedOnFailure {
-		switch x := any(pred).(type) {
-		case observable.Predicate:
-			tb.Errorf("expected pass, got fail: %v", x.Message())
-		default:
-			tb.Errorf("expected pass, got fail")
-		}
+	if !observable.Assert(spy, p) || spy.SpiedOnFailure {
+		tb.Errorf("expected pass, got fail: %v", p.Message())
 	}
 }
 
 // ExpectFail expects an assertion to fail. Useful for testing a testing library.
-func ExpectFail[T observable.Assertion](tb testing.TB, pred T) {
+func ExpectFail(tb testing.TB, p observable.Predicate) {
 	tb.Helper()
 	spy := New(tb)
 
-	if observable.Assert(spy, pred) || !spy.SpiedOnFailure {
+	if observable.Assert(spy, p) || !spy.SpiedOnFailure {
 		tb.Errorf("expected fail, got pass")
 	}
 }

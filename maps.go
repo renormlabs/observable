@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Renorm Labs. All rights reserved.
+
 package observable
 
 import (
@@ -6,7 +8,7 @@ import (
 	"sync"
 )
 
-// ContainsKey succeeds when key exists in map m.
+// ContainsKey returns a [Predicate] that is ok when key exists in map m.
 func ContainsKey[K comparable, V any](m map[K]V, key K) Predicate {
 	return Predicate{
 		ok:  func() bool { _, ok := m[key]; return ok },
@@ -14,7 +16,7 @@ func ContainsKey[K comparable, V any](m map[K]V, key K) Predicate {
 	}
 }
 
-// ContainsValue succeeds when val appears as a value in map m.
+// ContainsValue returns a [Predicate] that is ok when val appears as a value in map m.
 func ContainsValue[K comparable, V comparable](m map[K]V, val V) Predicate {
 	return Predicate{
 		ok: func() bool {
@@ -29,7 +31,7 @@ func ContainsValue[K comparable, V comparable](m map[K]V, val V) Predicate {
 	}
 }
 
-// MapEqual succeeds when two maps are deeply equal (reflect.DeepEqual).
+// MapEqual returns a [Predicate] that is ok when two maps are deeply equal (reflect.DeepEqual).
 func MapEqual[K comparable, V any](got, want map[K]V) Predicate {
 	var (
 		once  sync.Once
@@ -50,7 +52,7 @@ func MapEqual[K comparable, V any](got, want map[K]V) Predicate {
 	}
 }
 
-// MapLength succeeds when len(m) == want.
+// MapLength returns a [Predicate] that is ok when len(m) == want.
 func MapLength[K comparable, V any](m map[K]V, want int) Predicate {
 	return Predicate{
 		ok:  func() bool { return len(m) == want },

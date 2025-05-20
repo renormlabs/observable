@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Renorm Labs. All rights reserved.
+
 package observable
 
 import (
@@ -5,7 +7,7 @@ import (
 	"fmt"
 )
 
-// ErrorIs returns a [Predicate] that succeeds when [errors.Is](err, target) is true.
+// ErrorIs returns a [Predicate] that is ok when [errors.Is](err, target) is true.
 func ErrorIs(err, target error) Predicate {
 	return Predicate{
 		ok: func() bool { return errors.Is(err, target) },
@@ -15,7 +17,7 @@ func ErrorIs(err, target error) Predicate {
 	}
 }
 
-// Errors returns a [Predicate] that succeeds when f returns a non‑nil error.
+// Errors returns a [Predicate] that is ok when f returns a non‑nil error.
 func Errors(f func() error) Predicate {
 	return Predicate{
 		ok:  func() bool { return f() != nil },
@@ -23,7 +25,7 @@ func Errors(f func() error) Predicate {
 	}
 }
 
-// ErrorsWith returns a [Predicate] that succeeds when f returns an error that matches target according to [errors.Is].
+// ErrorsWith returns a [Predicate] that is ok when f returns an error that matches target according to [errors.Is].
 func ErrorsWith(f func() error, target error) Predicate {
 	return Predicate{
 		ok:  func() bool { return errors.Is(f(), target) },
@@ -31,7 +33,7 @@ func ErrorsWith(f func() error, target error) Predicate {
 	}
 }
 
-// Panics returns a [Predicate] that succeeds when f panics.
+// Panics returns a [Predicate] that is ok when f panics.
 func Panics(f func()) Predicate {
 	return Predicate{
 		ok: func() (panicked bool) {
