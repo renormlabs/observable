@@ -27,143 +27,112 @@ func (p Predicate) Ok() bool { return p.ok() }
 // Message returns the descriptive text explaining why the predicate failed.
 func (p Predicate) Message() string { return p.msg() }
 
-// Assertion is the constraint accepted by [Assert], [Assertf], and [Not]. It may be one of the following concrete types:
-//   - bool          – a pre‑computed truth value
-//   - func() bool – a zero‑arg function evaluated lazily
-//   - [Predicate] – a value returned by this package's helpers
-type Assertion interface {
-	bool | func() bool | Predicate
-}
-
-// Assert evaluates the assertion and records an error on the [testing.TB] when the assertion is false.
+// Assert evaluates the predicate and records an error on the [testing.TB] when the predicate is false.
 //
 // The returned bool is the evaluation result, which allows further composition or chaining inside a test when desired.
-func Assert[T Assertion](tb testing.TB, a T) bool {
+func Assert(tb testing.TB, p Predicate) bool {
 	tb.Helper()
 
-	ok, msg := assert(a)
-
-	return observe(tb, ok, msg) // auto-message (if any) is used
+	return observe(tb, p.Ok(), p.Message())
 }
 
 // Assertf behaves like [Assert] but lets the caller supply an explicit failure message via format and args, similar to [fmt.Sprintf].
-func Assertf[T Assertion](tb testing.TB, a T, format string, args ...any) bool {
+func Assertf(tb testing.TB, p Predicate, format string, args ...any) bool {
 	tb.Helper()
+	return observe(tb, p.Ok(), fmt.Sprintf(format, args...))
+}
 
-	ok, _ := assert(a) // discard auto-message
+// That promotes a bool or bool-thunk to a [Predicate].
+func That[T ~bool | ~func() bool](x T) Predicate {
+	var (
+		once sync.Once
+		got  bool
+	)
 
-	return observe(tb, ok, fmt.Sprintf(format, args...))
+	eval := func() {
+		once.Do(func() {
+			if f, ok := any(x).(func() bool); ok {
+				got = f()
+			} else {
+				got = any(x).(bool)
+			}
+		})
+	}
+
+	return Predicate{
+		ok:  func() bool { eval(); return got },
+		msg: func() string { eval(); return fmt.Sprintf("expected true, got %v", got) },
+	}
 }
 
 // Not returns the logical negation of its argument.
 //
-// The type bounds of the argument to Not are loose and enforced at runtime. You can:
-//   - Negate a bool, resulting in a new bool
-//   - Negate a func() bool, resulting in a new func() bool
-//   - Negate a Predicate, resulting in a new predicate
-//   - Negate a func(...) -> Assertion, resulting in new func(...) -> Assertion. This branch uses reflection and is slower.
+// You can negate a:
+// - [Predicate], resulting in a [Predicate]
+// - A function of any arity that returns a Predicate
 //
-// If you call Not with another type, it will panic!
-func Not[F any](x F) F {
-	//nolint:forcetypeassert
-	switch v := any(x).(type) {
-	case Predicate:
+// Negating a function of positive arity will use runtime reflection.
+//
+// Calling Not with anything else will **panic**!
+func Not[T any](a T) T {
+	if p, ok := any(a).(Predicate); ok {
 		return any(Predicate{
-			ok:  func() bool { return !v.Ok() },
-			msg: func() string { return "not: " + v.Message() },
-		}).(F)
-	case bool:
-		return any(!v).(F)
-	case func() bool:
-		return any(func() bool { return !v() }).(F)
+			ok:  func() bool { return !p.Ok() },
+			msg: func() string { return fmt.Sprintf("not: %s", p.Message()) },
+		}).(T)
 	}
 
-	rv := reflect.ValueOf(x)
-	if !rv.IsValid() || rv.Kind() != reflect.Func {
-		panic(fmt.Sprintf("argument to Not must be an assertion or function that returns an assertion, got %v", rv.Kind()))
+	// Handle nullary functions without reflection.
+	if f, ok := any(a).(func() Predicate); ok {
+		return any(func() Predicate {
+			return Not(f())
+		}).(T)
 	}
 
+	// Handle postive-arity functions with reflection.
+	rv := reflect.ValueOf(a)
+	if rv.Kind() != reflect.Func {
+		panic(fmt.Sprintf("argument to Not must be Predicate or func→Predicate, got %v", rv.Kind()))
+	}
 	rt := rv.Type()
-	if rt.NumOut() != 1 {
-		panic(fmt.Sprintf("argument to Not must be an assertion or function that returns an assertion, got a function which returns %d items", rt.NumOut()))
+	if rt.NumOut() != 1 || rt.Out(0) != reflect.TypeOf(Predicate{}) {
+		panic("argument to Not must return a Predicate")
 	}
 
-	out := rt.Out(0)
-	switch out {
-	case reflect.TypeOf(false):
-		//nolint:forcetypeassert
-		return reflect.MakeFunc(rt, func(args []reflect.Value) []reflect.Value {
-			b := rv.Call(args)[0].Bool()
-			return []reflect.Value{reflect.ValueOf(!b)}
-		}).Interface().(F)
-	case reflect.TypeOf((func() bool)(nil)):
-		//nolint:forcetypeassert
-		return reflect.MakeFunc(rt, func(args []reflect.Value) []reflect.Value {
-			f := rv.Call(args)[0].Interface().(func() bool)
-			return []reflect.Value{reflect.ValueOf(func() bool { return !f() })}
-		}).Interface().(F)
-	case reflect.TypeOf(Predicate{}):
-		//nolint:forcetypeassert
-		return reflect.MakeFunc(rt, func(args []reflect.Value) []reflect.Value {
-			p := rv.Call(args)[0].Interface().(Predicate)
-			neg := Predicate{
-				ok:  func() bool { return !p.Ok() },
-				msg: func() string { return "not: " + p.Message() },
+	wrapper := reflect.MakeFunc(rt, func(args []reflect.Value) []reflect.Value {
+		var callArgs []reflect.Value
+		if rt.IsVariadic() {
+			numFixedArgs := rt.NumIn() - 1
+			callArgs = make([]reflect.Value, 0, len(args)-1+5) // Pre-allocate: num fixed + estimate for variadic
+
+			// Add fixed arguments
+			for i := 0; i < numFixedArgs; i++ {
+				callArgs = append(callArgs, args[i])
 			}
-			return []reflect.Value{reflect.ValueOf(neg)}
-		}).Interface().(F)
-	default:
-		panic(fmt.Sprintf("argument to Not must be an assertion or function that returns an assertion, got a function which returns %v", out))
-	}
-}
 
-// Nil returns a [Predicate] that succeeds when v is nil.
-func Nil(v any) Predicate {
-	isNil := func(x any) bool {
-		if x == nil {
-			return true
+			// Unpack and add variadic arguments
+			// args[numFixedArgs] is the reflect.Value representing the slice of variadic arguments
+			if len(args) > numFixedArgs { // Ensure the variadic slice argument itself is present
+				variadicSliceValue := args[numFixedArgs]
+				for i := 0; i < variadicSliceValue.Len(); i++ {
+					callArgs = append(callArgs, variadicSliceValue.Index(i))
+				}
+			}
+		} else {
+			callArgs = args
 		}
 
-		rv := reflect.ValueOf(x)
+		out := rv.Call(callArgs)
+		p := out[0].Interface().(Predicate) // Original function returned a Predicate
 
-		return rv.Kind() >= reflect.Chan && rv.Kind() <= reflect.Slice && rv.IsNil()
-	}
+		negatedP := Predicate{
+			ok:  func() bool { return !p.Ok() },
+			msg: func() string { return fmt.Sprintf("not: %s", p.Message()) },
+		}
+		return []reflect.Value{reflect.ValueOf(negatedP)}
+	})
 
-	return Predicate{
-		ok:  func() bool { return isNil(v) },
-		msg: func() string { return fmt.Sprintf("expected %#v to be nil", v) },
-	}
-}
-
-// Zero returns a [Predicate] that succeeds when v is the zero value of its type.
-func Zero[T comparable](v T) Predicate {
-	return Predicate{
-		ok:  func() bool { return v == *new(T) },
-		msg: func() string { return fmt.Sprintf("expected zero value, got %v", v) },
-	}
-}
-
-// Equal returns a [Predicate] that succeeds when got == want.
-func Equal[T comparable](got, want T) Predicate {
-	return Predicate{
-		ok:  func() bool { return got == want },
-		msg: func() string { return fmt.Sprintf("expected %v, got %v", want, got) },
-	}
-}
-
-// Returns returns a [Predicate] that succeeds when f's return value equals want.
-func Returns[T comparable](f func() T, want T) Predicate {
-	var (
-		once sync.Once
-		got  T
-	)
-
-	eval := func() { once.Do(func() { got = f() }) }
-
-	return Predicate{
-		ok:  func() bool { eval(); return got == want },
-		msg: func() string { eval(); return fmt.Sprintf("expected %v, got %v", want, got) },
-	}
+	return wrapper.Interface().(T)
 }
 
 // observe is the common implementation used by [Assert] and [Assertf]. It reports a test error on tb when ok is false and returns ok so the caller can use the result in further logic.
@@ -179,23 +148,4 @@ func observe(tb testing.TB, ok bool, message string) bool {
 	tb.Error(message)
 
 	return false
-}
-
-// assert normalises any [Assertion] into its boolean value and accompanying auto‑generated message (if available).
-func assert[T Assertion](a T) (ok bool, autoMsg string) {
-	var zero T
-	if _, isBool := any(zero).(bool); isBool {
-		//nolint:forcetypeassert
-		return any(a).(bool), ""
-	}
-
-	if _, isFunc := any(zero).(func() bool); isFunc {
-		//nolint:forcetypeassert
-		return any(a).(func() bool)(), ""
-	}
-
-	//nolint:forcetypeassert
-	p := any(a).(Predicate)
-
-	return p.Ok(), p.Message()
 }

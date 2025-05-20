@@ -1,3 +1,5 @@
+// Copyright (c) 2025 Renorm Labs. All rights reserved.
+
 package observable
 
 import (
@@ -62,7 +64,7 @@ func EqualFold(got, want string) Predicate {
 }
 
 // RegexpMatches returns a [Predicate] that succeeds when the regular expression re matches s. The regular expression can either be a [*regexp.Regexp] or a string which will be compiled with [regexp.MustCompile].
-func RegexpMatches[T reOrStringT](s string, reOrString T) Predicate {
+func RegexpMatches[T string | *regexp.Regexp](s string, reOrString T) Predicate {
 	var (
 		once sync.Once
 		re   *regexp.Regexp
@@ -83,8 +85,4 @@ func RegexpMatches[T reOrStringT](s string, reOrString T) Predicate {
 		ok:  func() bool { eval(); return re.MatchString(s) },
 		msg: func() string { eval(); return fmt.Sprintf("expected %q to match %q", s, re.String()) },
 	}
-}
-
-type reOrStringT interface {
-	string | *regexp.Regexp
 }

@@ -61,7 +61,7 @@ func TestSpyHardFailPanics(t *testing.T) {
 
 func TestExpectFailure(t *testing.T) {
 	spy := testspy.New(t)
-	testspy.ExpectPass(spy, func() bool { return false })
+	testspy.ExpectPass(spy, observable.That(func() bool { return false }))
 
 	if !spy.SpiedOnFailure {
 		t.Errorf("ExpectPass should have failed, it succeeded")
@@ -73,7 +73,7 @@ func TestExpectFailure(t *testing.T) {
 		t.Errorf("ExpectPass should have failed, it succeeded")
 	}
 
-	testspy.ExpectFail(spy, func() bool { return true })
+	testspy.ExpectFail(spy, observable.That(func() bool { return true }))
 
 	if !spy.SpiedOnFailure {
 		t.Errorf("ExpectFail should have failed, it succeeded")

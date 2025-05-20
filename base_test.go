@@ -16,17 +16,17 @@ var (
 )
 
 func TestBoolChecks(t *testing.T) {
-	testspy.ExpectPass(t, true)
-	testspy.ExpectFail(t, false)
+	testspy.ExpectPass(t, observable.That(true))
+	testspy.ExpectFail(t, observable.That(false))
 
-	testspy.ExpectPass(t, observable.Not(false))
-	testspy.ExpectFail(t, observable.Not(true))
+	testspy.ExpectPass(t, observable.Not(observable.That(false)))
+	testspy.ExpectFail(t, observable.Not(observable.That(true)))
 
-	testspy.ExpectPass(t, func() bool { return 2+2 == 4 })
-	testspy.ExpectFail(t, func() bool { return 2+2 == 5 })
+	testspy.ExpectPass(t, observable.That(func() bool { return 2+2 == 4 }))
+	testspy.ExpectFail(t, observable.That(func() bool { return 2+2 == 5 }))
 
-	testspy.ExpectPass(t, observable.Not(func() bool { return 2+2 == 5 }))
-	testspy.ExpectFail(t, observable.Not(func() bool { return 2+2 == 4 }))
+	testspy.ExpectPass(t, observable.Not(observable.That(func() bool { return 2+2 == 5 })))
+	testspy.ExpectFail(t, observable.Not(observable.That(func() bool { return 2+2 == 4 })))
 }
 
 func TestNilChecks(t *testing.T) {
@@ -96,18 +96,6 @@ func TestNotUnsupportedValue(t *testing.T) {
 	observable.Not(42)
 }
 
-func TestNotUnsupportedFunc(t *testing.T) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Error("Expected panic, did not panic")
-		}
-	}()
-
-	foo := func() int { return 7 }
-	observable.Not(foo)
-}
-
 func TestNotUnsupportedFunc2(t *testing.T) {
 	defer func() {
 		r := recover()
@@ -122,9 +110,33 @@ func TestNotUnsupportedFunc2(t *testing.T) {
 
 func TestNotChecks(t *testing.T) {
 	testspy.ExpectPass(t, observable.Not(observable.Equal[string])("a", "b"))
-	testspy.ExpectPass(t, observable.Not(false))
-	testspy.ExpectPass(t, observable.Not(func() bool { return false }))
+	testspy.ExpectPass(t, observable.Not(observable.That(false)))
+	testspy.ExpectPass(t, observable.Not(observable.That(func() bool { return false })))
 
-	testspy.ExpectPass(t, observable.Not(func(_ string) bool { return false })("hello"))
-	testspy.ExpectPass(t, observable.Not(func(_ string) func() bool { return func() bool { return false } })("hello"))
+	testspy.ExpectPass(t, observable.True())
+	testspy.ExpectFail(t, observable.False())
+	testspy.ExpectFail(t, observable.Not(observable.True)())
+	testspy.ExpectPass(t, observable.Not(observable.False)())
+}
+
+func TestAny(t *testing.T) {
+	testspy.ExpectPass(t, observable.Any(observable.False(), observable.False(), observable.True()))
+	testspy.ExpectFail(t, observable.Any(observable.False(), observable.False()))
+
+	testspy.ExpectPass(t, observable.All(observable.True(), observable.True(), observable.True()))
+	testspy.ExpectFail(t, observable.All(observable.False(), observable.True(), observable.True()))
+
+	testspy.ExpectFail(t, observable.Not(observable.Any)(observable.True(), observable.False()))
+	testspy.ExpectFail(t, observable.Not(observable.All)(observable.True(), observable.True()))
+
+	testspy.ExpectPass(t, observable.Not(observable.All)(observable.False(), observable.True(), observable.True()))
+	testspy.ExpectPass(t, observable.Not(observable.Any)(observable.False(), observable.False(), observable.False()))
+}
+
+func TestNotVariadic(t *testing.T) {
+	f := func(_ string, _ ...any) observable.Predicate {
+		return observable.False()
+	}
+	testspy.ExpectPass(t, observable.Not(f)("foo", 1, 2, 3))
+	testspy.ExpectFail(t, observable.Not(observable.Not(f))("foo", 1, 2, 3))
 }
